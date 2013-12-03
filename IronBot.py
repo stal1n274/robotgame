@@ -1,4 +1,5 @@
 import rg
+import random
 
 class Robot:
 	def __init__(self):
@@ -49,9 +50,10 @@ class Robot:
 		# Bottom-Right corner
 		#self.SPAWN_SPOTS_OF_INTEREST = self.SPAWN_SPOTS_OF_INTEREST + ((16, 11), (15, 12), (15, 13), (14, 14), (13, 15), (12, 15), (11, 16))
 
-		self.RANGE_FRIEND_HELP = 20
-		self.RANGE_ENEMY_FOLLOW = 3
-		
+		self.RANGE_FRIEND_HELP = 5
+		self.RANGE_ENEMY_FOLLOW = 10
+		self.HP_CRITICAL_SAVE = 15
+		self.LOCS_AROUND_RND = 20
 
 	def get_robots_around(self, location, game):
 		""" Return dict of enemy and dict of friend robots with walk distance to certain location """
@@ -59,10 +61,10 @@ class Robot:
 		enemy_robots_dict = {}
 		friend_robots_dict = {}
 		for loc, bot in game.robots.iteritems():
-			distance = rg.wdist(self.location, loc)
+			distance = rg.dist(self.location, loc)
 			if bot.player_id != self.player_id:
 				# enemy
-				# TBD: replace robot with the same wdist only when new HP is lower than in dictionary
+				# TBD: replace robot with the same wdist only when new HP is lower than in dictionary, otherwise keep
 				enemy_robots_dict.update({distance: loc})
 			else:
 				# friend
@@ -76,112 +78,84 @@ class Robot:
 		
 		own_location = self.location
 
-		if own_location in self.SPAWN_SPOTS_OF_INTEREST:
-			# Check for an enemy around
-			for loc, bot in game.robots.iteritems():
-				if bot.player_id != self.player_id:
-					if rg.dist(loc, self.location) <= 1:
-						return ['attack', loc]
-			
-			# No enemies in 1 step, check whether there any friend nearby who needs help
-			enemies, friends = self.get_robots_around(own_location, game)
-			friends_keys = friends.keys()
-			friends_keys.sort()
-			for key in friends_keys:
-				# key is a wdist
-				if key>self.RANGE_FRIEND_HELP:
-					# other friends are out of range
-					break
-				
-				# check whether our friend attacks enemy
-				f_enemies, f_friends = self.get_robots_around(friends[key], game)
-
-				if f_enemies.has_key(1):
-					# friend attacks enemy, get nearby point to walk
-					available_locs = rg.locs_around(f_enemies[1], filter_out=(['invalid', 'obstacle']))
-					for loc in available_locs:
-						if loc not in game.robots:
-							return ['move', rg.toward(own_location, available_locs[0])]
-					# try to move directly to the center, TBD: this is bad decision, we'd need to modify this behavior
-					return ['move', rg.toward(self.location, rg.CENTER_POINT)]
-
-				if f_enemies.has_key(2):
-					# friend has a candidate for attack, join him
-					available_locs = rg.locs_around(f_enemies[2], filter_out=(['invalid', 'obstacle']))
-					for loc in available_locs:
-						if loc not in game.robots:
-							return ['move', rg.toward(own_location, available_locs[0])]
-					# try to move directly to the center, TBD: this is bad decision, we'd need to modify this behavior
-					return ['move', rg.toward(self.location, rg.CENTER_POINT)]
-
-
-			
-			# stub
-			return ['guard']
-		else:
-			# Check for an enemy around
-			for loc, bot in game.robots.iteritems():
-				if bot.player_id != self.player_id:
-					if rg.dist(loc, self.location) <= 1:
-						return ['attack', loc]
-
-			# Try to reach nearest interesting spawn point
-			distances_dict = {}
-			print("Self location: " + str(own_location))
-			for point in self.SPAWN_SPOTS_OF_INTEREST:
-				distance = rg.wdist(own_location, point)
-				distances_dict.update({distance: point})
-
-			# Get the nearest interesting location
-			distances_dict_keys = distances_dict.keys()
-			distances_dict_keys.sort()
-			nearest_location = rg.CENTER_POINT
-			for key in distances_dict_keys:
-				nearest_location = distances_dict[key]
-				# Check whether the point is free and isn't taken by another robot
-				if nearest_location in game.robots:
-					# point is taken by a robot
+		if self.hp<self.HP_CRITICAL_SAVE:
+			# SOS !!! Run away from enemies
+			available_locs = rg.locs_around(own_location, filter_out=('invalid', 'obstacle', 'spawn'))
+			for counter_a in xrange(self.LOCS_AROUND_RND):
+				loc = random.choice(available_locs)
+				# make sure that next location is free from enemies
+				enemies, friends = self.get_robots_around(loc, game)
+				if enemies.has_key(1):
+					# enemy nearby, find another location
 					continue
-				loc_type = rg.loc_types(nearest_location)
-				print("Types: " + str(loc_type))
-				if 'normal' in loc_type and 'obstacle' not in loc_type:
-					# we have found 'clear' spot
-					break
-
-			# Get next point on the way
-			next_move = rg.toward(own_location, nearest_location)
-
-			# Make sure that point is free
-			loc_type = rg.loc_types(next_move)
-			if 'normal' in loc_type and 'obstacle' not in loc_type and next_move not in game.robots:
-				# Let's move
-				print("Moving to: " + str(next_move))
-				return ['move', next_move]
-			else:
-				# Find another way
-				available_locs = rg.locs_around(own_location, filter_out=(['invalid', 'obstacle']))
-				for loc in available_locs:
-					if loc not in game.robots:
-						return ['move', available_locs[0]]
-				# Robot is blocked - no ways to move
-				return ['guard']
-
-
-
-		# stub
-		return ['guard']
-
-		"""
-		# if there are enemies around, attack them
+				else:
+					if_spawn_locs_nearby = rg.locs_around(loc, filter_out=('invalid', 'obstacle'))
+					for counter_b in xrange(self.LOCS_AROUND_RND):
+						if_spawn_loc = random.choice(if_spawn_locs_nearby)
+						if 'spawn' in rg.loc_types(if_spawn_loc):
+							continue
+						else:
+							return ['move', loc]
+		
+		# Check for an enemy around
+		enemies = {}
 		for loc, bot in game.robots.iteritems():
 			if bot.player_id != self.player_id:
 				if rg.dist(loc, self.location) <= 1:
-					return ['attack', loc]
+					enemies.update({bot.hp: loc})
+		if len(enemies) > 0:
+			# attack enemy with the lowest HP
+			enemies_keys=enemies.keys()
+			enemies_keys.sort()
+			return ['attack', enemies[enemies_keys[0]]]
 
-		# if we're in the center, stay put
-		if self.location == rg.CENTER_POINT:
-			return ['guard']
+		# No enemies in 1 step, check whether there any friend nearby who needs help
+		enemies, friends = self.get_robots_around(own_location, game)
+		friends_keys = friends.keys()
+		friends_keys.sort()
+		for key in friends_keys:
+			# key is a wdist
+			if key>self.RANGE_FRIEND_HELP:
+				# friends are out of range
+				break
+			
+			# check whether our friend attacks enemy
+			f_enemies, f_friends = self.get_robots_around(friends[key], game)
 
-		# move toward the center
-		return ['move', rg.toward(self.location, rg.CENTER_POINT)]
-		"""
+			if f_enemies.has_key(1):
+				# friend attacks enemy, get nearby point to walk
+				available_locs = rg.locs_around(f_enemies[1], filter_out=('invalid', 'obstacle'))
+				for loc in available_locs:
+					if loc not in game.robots:
+						return ['move', rg.toward(own_location, available_locs[0])]
+				# try to move directly to the center, TBD: this is bad decision, we'd need to modify this behavior
+				return ['move', rg.toward(own_location, rg.CENTER_POINT)]
+
+			if f_enemies.has_key(2):
+				# friend has a candidate for attack, join him
+				available_locs = rg.locs_around(f_enemies[2], filter_out=('invalid', 'obstacle'))
+				for loc in available_locs:
+					if loc not in game.robots:
+						return ['move', rg.toward(own_location, loc)]
+				# try to move directly to the center, TBD: this is bad decision, we'd need to modify this behavior
+				return ['move', rg.toward(own_location, rg.CENTER_POINT)]
+
+		# follow nearby enemy
+		enemies_keys = enemies.keys()
+		enemies_keys.sort()
+		for key in enemies_keys:
+			# key is a wdist
+			if key>self.RANGE_ENEMY_FOLLOW:
+				# no enemies nearby
+				break
+
+			available_locs = rg.locs_around(enemies[key], filter_out=('invalid', 'obstacle'))
+			for loc in available_locs:
+				if loc not in game.robots:
+					return ['move', rg.toward(own_location, loc)]
+			# try to move directly to the center, TBD: this is bad decision, we'd need to modify this behavior
+			return ['move', rg.toward(own_location, rg.CENTER_POINT)]
+			
+		# nothing to do, lets move to the center
+		return ['move', rg.toward(own_location, rg.CENTER_POINT)]
+
