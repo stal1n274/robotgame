@@ -3,65 +3,83 @@ import random
 
 class Robot:
 	def __init__(self):
-		""" define all interested spawn points (X, Y)
-
-		0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8
-		1 X X X X X X O O O O O X X X X X X X
-		2 X X X X O o           o O X X X X X
-		3 X X O o                   o O X X X
-		4 X X o                       o X X X
-		5 X O                           O X X
-		6 X o                           o X X
-		7 O                               O X
-		8 O                               O X
-		9 O                               O X
-		0 O                               O X
-		1 O                               O X
-		2 X o                           o X X
-		3 X O                           O X X
-		4 X X o                       o X X X
-		5 X X O o                   o O X X X
-		6 X X X X O o           o O X X X X X
-		7 X X X X X X O O O O O X X X X X X X
-		8 X X X X X X X X X X X X X X X X X X
-
-		Legend:
-		X - wall
-		O - uninteresting spawn points
-		o - interesting spawn points
-		"""
+		""" Init """
 		
-		# Upper-Left corner
-		self.SPAWN_SPOTS_OF_INTEREST = ((3, 7), (4, 6), (5, 4), (6, 5), (5, 5), (7, 3), (7, 4))
-		# Bottom-Left corner
-		self.SPAWN_SPOTS_OF_INTEREST = self.SPAWN_SPOTS_OF_INTEREST + ((11, 3), (12, 4), (13, 4), (14, 5), (14, 6), (15, 7), (15, 8))
-		# Upper-Right corner
-		self.SPAWN_SPOTS_OF_INTEREST = self.SPAWN_SPOTS_OF_INTEREST + ((3, 11), (4, 12), (4, 13), (5, 14), (6, 14), (7, 15), (8, 15))
-		# Bottom-Right corner
-		self.SPAWN_SPOTS_OF_INTEREST = self.SPAWN_SPOTS_OF_INTEREST + ((15, 11), (14, 12), (14, 13), (13, 14), (12, 14), (11, 15), (11, 15))
+		self.MAP = []
+		self.MAP.append("XXXXXXXXXXXXXXXXXXX")
+		self.MAP.append("XXXXXXXOOOOOXXXXXXX")
+		self.MAP.append("XXXXXO       OXXXXX")
+		self.MAP.append("XXXO           OXXX")
+		self.MAP.append("XXX             XXX")
+		self.MAP.append("XXO             OXX")
+		self.MAP.append("XX               XX")
+		self.MAP.append("XO               OX")
+		self.MAP.append("XO               OX")
+		self.MAP.append("XO               OX")
+		self.MAP.append("XO               OX")
+		self.MAP.append("XO               OX")
+		self.MAP.append("XX               XX")
+		self.MAP.append("XXO             OXX")
+		self.MAP.append("XXX             XXX")
+		self.MAP.append("XXXO           OXXX")
+		self.MAP.append("XXXXXO       OXXXXX")
+		self.MAP.append("XXXXXXXOOOOOXXXXXXX")
+		self.MAP.append("XXXXXXXXXXXXXXXXXXX")
 
-		# Spots to reach:
-		# Upper-Left corner
-		#self.SPAWN_SPOTS_OF_INTEREST = ((2, 7), (3, 6), (3, 5), (4, 4), (5, 3), (6, 3), (7, 2))
-		# Upper-Right corner
-		#self.SPAWN_SPOTS_OF_INTEREST = self.SPAWN_SPOTS_OF_INTEREST + ((11, 2), (12, 3), (13, 3), (14, 4), (15, 5), (15, 6), (16, 7))
-		# Bottom-Left corner
-		#self.SPAWN_SPOTS_OF_INTEREST = self.SPAWN_SPOTS_OF_INTEREST + ((2, 11), (3, 12), (3, 13), (4, 14), (5, 15), (6, 15), (7, 16))
-		# Bottom-Right corner
-		#self.SPAWN_SPOTS_OF_INTEREST = self.SPAWN_SPOTS_OF_INTEREST + ((16, 11), (15, 12), (15, 13), (14, 14), (13, 15), (12, 15), (11, 16))
+		# Legend:
+		# X - wall
+		# O - spawn point
 
 		self.RANGE_FRIEND_HELP = 5
 		self.RANGE_ENEMY_FOLLOW = 10
-		self.HP_CRITICAL_SAVE = 15
+		self.HP_CRITICAL_SAVE = 5
 		self.LOCS_AROUND_RND = 20
 
+	
+	def good_day_to_die(self, game):
+		""" Check whether it'd be good to die """
+		
+		# Get number of nearby robots
+		num_enemies = 0
+		for loc, bot in game.robots.iteritems():
+			if bot.player_id != self.player_id:
+				if rg.dist(loc, self.location) <= 1:
+					num_enemies = num_enemies + 1
+					
+		if self.hp < 10 and num_enemies >= 2:
+			# it'd be better to die
+			print("Enemies: %d, HP: %d" % (num_enemies, self.hp))
+			return True
+		if self.hp < 31 and num_enemies >= 3:
+			# it'd be better to die
+			return True
+
+		return False
+		
+	def move_next(self, destination):
+		""" Makes the best move toward to destination """
+		
+		if self.location == destination:
+			# we are in the center
+			return ['guard']
+
+		if self.MAP[destination[1]][destination[0]] == 'X':
+			# we're trying to move to the wall, find nearest good point
+			available_locs = rg.locs_around(self.location, filter_out=('invalid', 'obstacle', 'spawn'))
+			if len(available_locs) > 0:
+				return ['move', available_locs[0]]
+			return ['guard']
+
+		return ['move', destination]
+		
+		
 	def get_robots_around(self, location, game):
 		""" Return dict of enemy and dict of friend robots with walk distance to certain location """
 
 		enemy_robots_dict = {}
 		friend_robots_dict = {}
 		for loc, bot in game.robots.iteritems():
-			distance = rg.dist(self.location, loc)
+			distance = rg.dist(location, loc)
 			if bot.player_id != self.player_id:
 				# enemy
 				# TBD: replace robot with the same wdist only when new HP is lower than in dictionary, otherwise keep
@@ -76,27 +94,33 @@ class Robot:
 	def act(self, game):
 		""" Think globally, act locally """
 		
-		own_location = self.location
+		if self.good_day_to_die(game) is True:
+			print("Suicide!")
+			return ['suicide']
 
 		if self.hp<self.HP_CRITICAL_SAVE:
 			# SOS !!! Run away from enemies
-			available_locs = rg.locs_around(own_location, filter_out=('invalid', 'obstacle', 'spawn'))
-			for counter_a in xrange(self.LOCS_AROUND_RND):
-				loc = random.choice(available_locs)
-				# make sure that next location is free from enemies
-				enemies, friends = self.get_robots_around(loc, game)
-				if enemies.has_key(1):
-					# enemy nearby, find another location
-					continue
-				else:
-					if_spawn_locs_nearby = rg.locs_around(loc, filter_out=('invalid', 'obstacle'))
-					for counter_b in xrange(self.LOCS_AROUND_RND):
-						if_spawn_loc = random.choice(if_spawn_locs_nearby)
-						if 'spawn' in rg.loc_types(if_spawn_loc):
-							continue
-						else:
-							return ['move', loc]
-		
+			available_locs = rg.locs_around(self.location, filter_out=('invalid', 'obstacle', 'spawn'))
+			if len(available_locs) > 0:
+				for counter_a in xrange(self.LOCS_AROUND_RND):
+					loc = random.choice(available_locs)
+					# make sure that next location is free from enemies
+					enemies, friends = self.get_robots_around(loc, game)
+					if enemies.has_key(1):
+						# enemy nearby, find another location
+						continue
+					else:
+						if_spawn_locs_nearby = rg.locs_around(loc, filter_out=('invalid', 'obstacle'))
+						if len(if_spawn_locs_nearby) == 0:
+							# no ways to move
+							break
+						for counter_b in xrange(self.LOCS_AROUND_RND):
+							if_spawn_loc = random.choice(if_spawn_locs_nearby)
+							if 'spawn' in rg.loc_types(if_spawn_loc):
+								continue
+							else:
+								return self.move_next(loc)
+
 		# Check for an enemy around
 		enemies = {}
 		for loc, bot in game.robots.iteritems():
@@ -110,7 +134,7 @@ class Robot:
 			return ['attack', enemies[enemies_keys[0]]]
 
 		# No enemies in 1 step, check whether there any friend nearby who needs help
-		enemies, friends = self.get_robots_around(own_location, game)
+		enemies, friends = self.get_robots_around(self.location, game)
 		friends_keys = friends.keys()
 		friends_keys.sort()
 		for key in friends_keys:
@@ -127,18 +151,18 @@ class Robot:
 				available_locs = rg.locs_around(f_enemies[1], filter_out=('invalid', 'obstacle'))
 				for loc in available_locs:
 					if loc not in game.robots:
-						return ['move', rg.toward(own_location, available_locs[0])]
+						return self.move_next(rg.toward(self.location, loc))
 				# try to move directly to the center, TBD: this is bad decision, we'd need to modify this behavior
-				return ['move', rg.toward(own_location, rg.CENTER_POINT)]
+				return self.move_next(rg.toward(self.location, rg.CENTER_POINT))
 
 			if f_enemies.has_key(2):
 				# friend has a candidate for attack, join him
 				available_locs = rg.locs_around(f_enemies[2], filter_out=('invalid', 'obstacle'))
 				for loc in available_locs:
 					if loc not in game.robots:
-						return ['move', rg.toward(own_location, loc)]
+						return self.move_next(rg.toward(self.location, loc))
 				# try to move directly to the center, TBD: this is bad decision, we'd need to modify this behavior
-				return ['move', rg.toward(own_location, rg.CENTER_POINT)]
+				return self.move_next(rg.toward(self.location, rg.CENTER_POINT))
 
 		# follow nearby enemy
 		enemies_keys = enemies.keys()
@@ -152,10 +176,10 @@ class Robot:
 			available_locs = rg.locs_around(enemies[key], filter_out=('invalid', 'obstacle'))
 			for loc in available_locs:
 				if loc not in game.robots:
-					return ['move', rg.toward(own_location, loc)]
+					return self.move_next(rg.toward(self.location, loc))
 			# try to move directly to the center, TBD: this is bad decision, we'd need to modify this behavior
-			return ['move', rg.toward(own_location, rg.CENTER_POINT)]
+			return self.move_next(rg.toward(self.location, rg.CENTER_POINT))
 			
 		# nothing to do, lets move to the center
-		return ['move', rg.toward(own_location, rg.CENTER_POINT)]
+		return self.move_next(rg.toward(self.location, rg.CENTER_POINT))
 
