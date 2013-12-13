@@ -183,3 +183,5 @@ class Robot:
 		# nothing to do, lets move to the center
 		return self.move_next(rg.toward(self.location, rg.CENTER_POINT))
 
+
+		
